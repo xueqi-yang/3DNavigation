@@ -9,6 +9,7 @@ import { ELEVATOR_NAV_POSITIONS, ELEVATOR_POSITIONS, getFloorFromY, FLOOR_Y } fr
 const AGENT_SPEED  = 1.5
 const AGENT_HEIGHT = 0.5
 const AGENT_RADIUS = 0.12
+const ASSET_BASE = import.meta.env.BASE_URL
 
 export function useScene() {
   // ── Reactive state (exposed to Vue components) ──
@@ -218,7 +219,8 @@ export function useScene() {
   // ── Load all GLB models ──
   async function _loadModels(s) {
     const loader = new GLTFLoader()
-    const load   = url => new Promise((res, rej) => loader.load(url, g => res(g.scene), undefined, rej))
+    const assetUrl = path => `${ASSET_BASE}${path.replace(/^\//, '')}`
+    const load = path => new Promise((res, rej) => loader.load(assetUrl(path), g => res(g.scene), undefined, rej))
 
     try {
       loadingMsg.value = 'Loading floors...'
