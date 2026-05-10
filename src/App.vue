@@ -2,7 +2,12 @@
   <div class="app">
 
     <!-- Three.js canvas -->
-    <canvas ref="canvasRef" class="canvas" @click="onCanvasClick" />
+    <canvas
+      ref="canvasRef"
+      class="canvas"
+      @pointerdown="onCanvasPointerDown"
+      @click="onCanvasClick"
+    />
 
     <!-- Loading overlay -->
     <Transition name="fade">
@@ -162,6 +167,7 @@ const searchResults = ref([])
 const waypoints     = ref([])
 const wheelchairMode = ref(false)
 const routingStrategy = ref('distance')
+const pointerDown = ref(null)
 
 // ── Search ──
 function onSearch() {
@@ -217,7 +223,22 @@ function onFocusFloor(f) {
 }
 
 // ── Canvas click ──
+function onCanvasPointerDown(e) {
+  pointerDown.value = {
+    x: e.clientX,
+    y: e.clientY,
+    button: e.button,
+  }
+}
+
 function onCanvasClick(e) {
+  if (!pointerDown.value || pointerDown.value.button !== 0) return
+  const dx = e.clientX - pointerDown.value.x
+  const dy = e.clientY - pointerDown.value.y
+  const dragDistance = Math.sqrt(dx * dx + dy * dy)
+  pointerDown.value = null
+  if (dragDistance > 4) return
+
   const clicked = clickNavigate(e, canvasRef.value)
   if (!clicked) {
     waypoints.value = []
