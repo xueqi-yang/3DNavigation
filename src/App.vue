@@ -22,28 +22,6 @@
     <!-- Left panel -->
     <div class="ui-panel left-panel">
 
-      <!-- Search -->
-      <div class="panel-section">
-        <div class="panel-label">Destination</div>
-        <input
-          v-model="searchQuery"
-          class="search-input"
-          placeholder="Search room, lab, office..."
-          @input="onSearch"
-        />
-        <div v-if="searchResults.length" class="search-results">
-          <div
-            v-for="dest in searchResults"
-            :key="dest.id"
-            class="result-item"
-            @click="addWaypoint(dest)"
-          >
-            <span>{{ CATEGORY_ICONS[dest.category] }} {{ dest.name }}</span>
-            <span class="floor-badge">F{{ dest.floor }}</span>
-          </div>
-        </div>
-      </div>
-
       <!-- Route / Waypoints -->
       <div class="panel-section">
         <div class="panel-label">Route</div>
@@ -81,6 +59,14 @@
           <span><i class="legend-dot distance" />Distance route</span>
           <span><i class="legend-dot time" />Time route</span>
         </div>
+        <button
+          class="btn btn-secondary"
+          :class="{ active: isAddingWaypoint }"
+          :disabled="isNavigating || waypoints.length === 0"
+          @click="onAddDestination"
+        >
+          {{ isAddingWaypoint ? 'Click map to add' : 'Add destination' }}
+        </button>
 
         <!-- Waypoint list -->
         <div class="waypoint-list">
@@ -91,9 +77,24 @@
             v-for="(wp, i) in waypoints"
             :key="wp.id"
             class="waypoint-item"
+            :class="{ dragging: draggedWaypointIndex === i }"
+            @dragover.prevent
+            @drop="onWaypointDrop(i)"
+            @dragend="onWaypointDragEnd"
           >
             <span class="wp-num">{{ i + 1 }}</span>
             <span class="wp-name">{{ wp.name }}</span>
+            <button
+              class="wp-drag-handle"
+              :disabled="isNavigating"
+              draggable="true"
+              title="Drag to reorder"
+              @dragstart="onWaypointDragStart(i)"
+            >
+              <span />
+              <span />
+              <span />
+            </button>
             <span class="wp-remove" @click="removeWaypoint(i)">×</span>
           </div>
         </div>
@@ -147,7 +148,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useScene } from './systems/useScene.js'
-import { searchDestinations, CATEGORY_ICONS } from './systems/destinations.js'
 
 const canvasRef = ref(null)
 
@@ -158,35 +158,61 @@ const {
   statusMsg, isNavigating, hasPreview,
   init, startNavigation, showPreview,
   cancelNavigation, focusFloor,
-  setWheelchairMode, setRoutingStrategy, clickNavigate, destroy,
+  setWheelchairMode, setRoutingStrategy, setWaypointMarkers, clickNavigate, destroy,
 } = useScene()
 
 // ── Local UI state ──
-const searchQuery   = ref('')
-const searchResults = ref([])
 const waypoints     = ref([])
 const wheelchairMode = ref(false)
 const routingStrategy = ref('distance')
 const pointerDown = ref(null)
-
-// ── Search ──
-function onSearch() {
-  searchResults.value = searchDestinations(searchQuery.value, wheelchairMode.value)
-}
+const isAddingWaypoint = ref(false)
+const nextWaypointIdentity = ref(0)
+const draggedWaypointIndex = ref(null)
 
 // ── Waypoints ──
-function addWaypoint(dest) {
-  if (waypoints.value.find(w => w.id === dest.id)) return
-  waypoints.value.push(dest)
-  searchQuery.value   = ''
-  searchResults.value = []
-  showPreview(waypoints.value)
+function nextWaypointLabel() {
+  const code = 65 + nextWaypointIdentity.value
+  nextWaypointIdentity.value += 1
+  return String.fromCharCode(code)
 }
 
 function removeWaypoint(i) {
   waypoints.value.splice(i, 1)
-  if (waypoints.value.length > 0) showPreview(waypoints.value)
-  else cancelNavigation()
+  isAddingWaypoint.value = false
+  if (waypoints.value.length > 0) {
+    setWaypointMarkers(waypoints.value)
+    showPreview(waypoints.value)
+  } else {
+    onClear()
+  }
+}
+
+function reorderWaypoint(fromIndex, toIndex) {
+  if (fromIndex === toIndex) return
+  if (fromIndex < 0 || toIndex < 0) return
+  if (fromIndex >= waypoints.value.length || toIndex >= waypoints.value.length) return
+  const next = [...waypoints.value]
+  const [moved] = next.splice(fromIndex, 1)
+  next.splice(toIndex, 0, moved)
+  waypoints.value = next
+  setWaypointMarkers(waypoints.value)
+  showPreview(waypoints.value)
+}
+
+function onWaypointDragStart(index) {
+  if (isNavigating.value) return
+  draggedWaypointIndex.value = index
+}
+
+function onWaypointDrop(index) {
+  if (draggedWaypointIndex.value === null) return
+  reorderWaypoint(draggedWaypointIndex.value, index)
+  draggedWaypointIndex.value = null
+}
+
+function onWaypointDragEnd() {
+  draggedWaypointIndex.value = null
 }
 
 // ── Mode ──
@@ -201,6 +227,10 @@ function setStrategy(strategy) {
   if (waypoints.value.length > 0) showPreview(waypoints.value)
 }
 
+function onAddDestination() {
+  isAddingWaypoint.value = true
+}
+
 // ── Navigation ──
 function onNavigate() {
   if (!hasPreview.value) {
@@ -208,12 +238,16 @@ function onNavigate() {
   } else {
     startNavigation(waypoints.value)
     waypoints.value = []
+    isAddingWaypoint.value = false
+    setWaypointMarkers(waypoints.value)
   }
 }
 
 function onClear() {
   waypoints.value     = []
-  searchResults.value = []
+  isAddingWaypoint.value = false
+  nextWaypointIdentity.value = 0
+  setWaypointMarkers(waypoints.value)
   cancelNavigation()
 }
 
@@ -241,11 +275,33 @@ function onCanvasClick(e) {
 
   const clicked = clickNavigate(e, canvasRef.value)
   if (!clicked) {
-    waypoints.value = []
-    cancelNavigation()
+    if (isAddingWaypoint.value) {
+      isAddingWaypoint.value = false
+      return
+    }
+    onClear()
     return
   }
-  waypoints.value = [clicked]
+  if (isAddingWaypoint.value) {
+    const label = nextWaypointLabel()
+    waypoints.value.push({
+      ...clicked,
+      id: `${clicked.id}_${label}`,
+      label,
+      name: `Point ${label}`,
+    })
+    isAddingWaypoint.value = false
+  } else {
+    nextWaypointIdentity.value = 0
+    const label = nextWaypointLabel()
+    waypoints.value = [{
+      ...clicked,
+      id: `${clicked.id}_${label}`,
+      label,
+      name: `Point ${label}`,
+    }]
+  }
+  setWaypointMarkers(waypoints.value)
   showPreview(waypoints.value)
 }
 
@@ -410,9 +466,42 @@ body {
   padding: 6px 10px;
   background: rgba(255,255,255,0.04);
   border-radius: 6px; font-size: 12px;
+  border: 1px solid transparent;
+}
+.waypoint-item.dragging {
+  opacity: 0.45;
+  border-color: rgba(255,215,0,0.45);
 }
 .wp-num { color: rgba(99,179,237,0.6); font-size: 10px; min-width: 14px; }
 .wp-name { flex: 1; }
+.wp-drag-handle {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 5px;
+  cursor: grab;
+}
+.wp-drag-handle span {
+  display: block;
+  height: 1px;
+  background: rgba(255,255,255,0.45);
+}
+.wp-drag-handle:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+.wp-drag-handle:not(:disabled):hover {
+  border-color: rgba(99,179,237,0.35);
+}
+.wp-drag-handle:not(:disabled):hover span {
+  background: #90cdf4;
+}
 .wp-remove {
   cursor: pointer; color: rgba(255,255,255,0.2);
   font-size: 16px; line-height: 1; transition: color 0.15s;
@@ -441,6 +530,11 @@ body {
   border: 1px solid rgba(255,255,255,0.08);
 }
 .btn-secondary:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); }
+.btn-secondary.active {
+  background: rgba(255,215,0,0.15);
+  border-color: rgba(255,215,0,0.4);
+  color: #ffd700;
+}
 
 /* ── Floor selector ── */
 .floor-row { display: flex; gap: 6px; }

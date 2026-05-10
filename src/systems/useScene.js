@@ -43,6 +43,7 @@ export function useScene() {
   let pathLine      = null
   let distancePreviewLine = null
   let timePreviewLine = null
+  let waypointMarkers = []
   let floorMeshes   = {}
   let currentPath   = []
   let finalDest     = null
@@ -243,6 +244,53 @@ export function useScene() {
     }
   }
 
+  function _makeWaypointMarker(order, waypoint) {
+    const group = new THREE.Group()
+    const position = waypoint.position
+    group.position.set(position.x, position.y + 0.55, position.z)
+
+    const pin = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 16, 16),
+      new THREE.MeshPhongMaterial({
+        color: 0xffffff,
+        emissive: 0xffd700,
+        emissiveIntensity: 0.35,
+      })
+    )
+
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, 0.45, 10),
+      new THREE.MeshPhongMaterial({ color: 0xffd700 })
+    )
+    stem.position.y = -0.28
+
+    const label = _makeWaypointLabel(`${order}${waypoint.label || ''}`)
+    label.position.y = 0.28
+
+    group.add(stem, pin, label)
+    group.name = `WaypointMarker_${order}${waypoint.label || ''}`
+    return group
+  }
+
+  function _makeWaypointLabel(text) {
+    const cv = document.createElement('canvas')
+    cv.width = cv.height = 64
+    const ctx = cv.getContext('2d')
+    ctx.clearRect(0, 0, 64, 64)
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.arc(32, 32, 24, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#111827'
+    ctx.font = text.length > 2 ? 'bold 22px monospace' : 'bold 28px monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(String(text), 32, 34)
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true }))
+    sprite.scale.set(0.42, 0.42, 1)
+    return sprite
+  }
+
   // ── Load all GLB models ──
   async function _loadModels(s) {
     const loader = new GLTFLoader()
@@ -309,8 +357,8 @@ export function useScene() {
     if (_logTimer >= 0.5) {
       _logTimer = 0
       const p = agentGroup.position
-      const seg = currentPath[0]?._elevatorRide ? '电梯段' : '步行'
-      console.log(`[人坐标] (${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)})  F${getFloorFromY(p.y)}  当前段:${seg}  剩余路径点:${currentPath.length}`)
+      const seg = currentPath[0]?._elevatorRide ? 'elevator ride' : 'walking'
+      console.log(`[Agent] pos=(${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)})  F${getFloorFromY(p.y)}  segment=${seg}  remaining points=${currentPath.length}`)
     }
 
     const target = currentPath[0]
@@ -331,17 +379,17 @@ export function useScene() {
       if (elevator._cabFloor !== fromFloor) {
         // ── Phase A: Summon cab to agent's floor first ──
         _elevatorWaiting = true
-        console.log(`[电梯] 等待电梯从 F${elevator._cabFloor} 来到 F${fromFloor}`)
-        statusMsg.value = `等待电梯...`
+        console.log(`[Elevator] Waiting for cab from F${elevator._cabFloor} to F${fromFloor}`)
+        statusMsg.value = `Waiting for elevator...`
         elevator.moveCabToFloor(fromFloor).then(() => {
           // Cab arrived at agent floor — now ride to target floor
           _elevatorWaiting = false
           _elevatorRiding  = true
-          console.log(`[电梯] 电梯到达 F${fromFloor}，进入 → 前往 F${toFloor}`)
-          statusMsg.value = `乘坐电梯前往 F${toFloor}...`
+          console.log(`[Elevator] Cab arrived at F${fromFloor}; boarding and riding to F${toFloor}`)
+          statusMsg.value = `Taking elevator to F${toFloor}...`
           elevator.moveCabToFloor(toFloor).then(() => {
             agentGroup.position.set(_elevatorLandPos.x, _elevatorLandPos.y, _elevatorLandPos.z)
-            console.log(`[电梯] 到达 F${toFloor}`)
+            console.log(`[Elevator] Arrived at F${toFloor}`)
             _elevatorRiding  = false
             _elevatorLandPos = null
             currentFloor.value = toFloor
@@ -352,11 +400,11 @@ export function useScene() {
       } else {
         // ── Cab already on agent's floor — ride directly ──
         _elevatorRiding = true
-        console.log(`[电梯] 直接乘坐 F${fromFloor} → F${toFloor}`)
-        statusMsg.value = `乘坐电梯前往 F${toFloor}...`
+        console.log(`[Elevator] Direct ride from F${fromFloor} to F${toFloor}`)
+        statusMsg.value = `Taking elevator to F${toFloor}...`
         elevator.moveCabToFloor(toFloor).then(() => {
           agentGroup.position.set(_elevatorLandPos.x, _elevatorLandPos.y, _elevatorLandPos.z)
-          console.log(`[电梯] 到达 F${toFloor}`)
+          console.log(`[Elevator] Arrived at F${toFloor}`)
           _elevatorRiding  = false
           _elevatorLandPos = null
           currentFloor.value = toFloor
@@ -499,12 +547,12 @@ export function useScene() {
     if (!pathfinder.ready || waypoints.length === 0) return
     const start = agentGroup.position.clone()
     console.log(
-      `[预览] 起点=(${start.x.toFixed(3)}, ${start.y.toFixed(3)}, ${start.z.toFixed(3)}) ` +
-      `F${getFloorFromY(start.y)}  终点数量=${waypoints.length}`
+      `[Preview] start=(${start.x.toFixed(3)}, ${start.y.toFixed(3)}, ${start.z.toFixed(3)}) ` +
+      `F${getFloorFromY(start.y)}  waypoint count=${waypoints.length}`
     )
     waypoints.forEach((wp, i) => {
       console.log(
-        `[预览] 终点${i + 1} ${wp.name || wp.id || 'destination'}=` +
+        `[Preview] waypoint ${i + 1} ${wp.name || wp.id || 'destination'}=` +
         `(${wp.position.x.toFixed(3)}, ${wp.position.y.toFixed(3)}, ${wp.position.z.toFixed(3)}) ` +
         `F${getFloorFromY(wp.position.y)}`
       )
@@ -530,23 +578,23 @@ export function useScene() {
     const elevOpen  = elevator ? elevator.isFloorOpen(fromFloor) : true
     for (const [index, wp] of waypoints.entries()) {
       console.log(
-        `[预览:${strategy}] 段${index + 1} from=(${from.x.toFixed(3)}, ${from.y.toFixed(3)}, ${from.z.toFixed(3)}) ` +
+        `[Preview:${strategy}] leg ${index + 1} from=(${from.x.toFixed(3)}, ${from.y.toFixed(3)}, ${from.z.toFixed(3)}) ` +
         `F${getFloorFromY(from.y)} -> to=(${wp.position.x.toFixed(3)}, ${wp.position.y.toFixed(3)}, ${wp.position.z.toFixed(3)}) ` +
         `F${getFloorFromY(wp.position.y)}`
       )
       const path = pathfinder.findPath(from, wp.position, elevOpen, strategy)
       if (path) {
         console.log(
-          `[预览:${strategy}] 段${index + 1} 路径点=${path.length} ` +
-          `首点=${_formatPoint(path[0])}  末点=${_formatPoint(path[path.length - 1])}`
+          `[Preview:${strategy}] leg ${index + 1} path points=${path.length} ` +
+          `first=${_formatPoint(path[0])}  last=${_formatPoint(path[path.length - 1])}`
         )
         fullPath = fullPath.concat(path)
       } else {
-        console.warn(`[预览:${strategy}] 段${index + 1} 无路径`)
+        console.warn(`[Preview:${strategy}] leg ${index + 1} has no path`)
       }
       from = wp.position
     }
-    console.log(`[预览:${strategy}] 总路径点=${fullPath.length}`)
+    console.log(`[Preview:${strategy}] total path points=${fullPath.length}`)
     return fullPath
   }
 
@@ -601,6 +649,22 @@ export function useScene() {
     _updatePreviewLineColors()
   }
 
+  function setWaypointMarkers(waypoints) {
+    for (const marker of waypointMarkers) {
+      scene.value?.remove(marker)
+      marker.traverse(child => {
+        child.geometry?.dispose?.()
+        child.material?.map?.dispose?.()
+        child.material?.dispose?.()
+      })
+    }
+    waypointMarkers = []
+    if (!scene.value) return
+
+    waypointMarkers = waypoints.map((wp, index) => _makeWaypointMarker(index + 1, wp))
+    waypointMarkers.forEach(marker => scene.value.add(marker))
+  }
+
   function _updatePreviewLineColors() {
     if (!pathfinder) return
     distancePreviewLine?.material?.color.setHex(
@@ -629,11 +693,11 @@ export function useScene() {
       const navHits = ray.intersectObject(navmeshMesh, true)
       if (navHits.length > 0) {
         pt = navHits[0].point.clone()
-        console.log(`[点击] navmesh命中 (${pt.x.toFixed(2)}, ${pt.y.toFixed(2)}, ${pt.z.toFixed(2)})`)
+        console.log(`[Click] Navmesh hit (${pt.x.toFixed(2)}, ${pt.y.toFixed(2)}, ${pt.z.toFixed(2)})`)
         console.log(
-          `[点击] 起点=(${agentGroup.position.x.toFixed(3)}, ${agentGroup.position.y.toFixed(3)}, ${agentGroup.position.z.toFixed(3)}) ` +
+          `[Click] start=(${agentGroup.position.x.toFixed(3)}, ${agentGroup.position.y.toFixed(3)}, ${agentGroup.position.z.toFixed(3)}) ` +
           `F${getFloorFromY(agentGroup.position.y)}  ` +
-          `点击点=(${pt.x.toFixed(3)}, ${pt.y.toFixed(3)}, ${pt.z.toFixed(3)}) F${getFloorFromY(pt.y)}`
+          `target=(${pt.x.toFixed(3)}, ${pt.y.toFixed(3)}, ${pt.z.toFixed(3)}) F${getFloorFromY(pt.y)}`
         )
       }
     }
@@ -642,22 +706,22 @@ export function useScene() {
     if (!pt) {
       const allHits = ray.intersectObjects(scene.value.children, true)
       if (allHits.length === 0) {
-        console.warn('[点击] 没有命中任何场景物体')
+        console.warn('[Click] No scene object hit')
         return
       }
       const rawPt   = allHits[0].point.clone()
       const snapped = pathfinder.snapToNavmesh(rawPt)
       if (!snapped) {
-        console.warn(`[点击] 无法吸附到navmesh  raw=(${rawPt.x.toFixed(2)},${rawPt.y.toFixed(2)},${rawPt.z.toFixed(2)})`)
+        console.warn(`[Click] Could not snap to navmesh  raw=(${rawPt.x.toFixed(2)},${rawPt.y.toFixed(2)},${rawPt.z.toFixed(2)})`)
         return
       }
       pt = new THREE.Vector3(snapped.x, snapped.y, snapped.z)
-      console.log(`[点击] 吸附到navmesh (${pt.x.toFixed(2)}, ${pt.y.toFixed(2)}, ${pt.z.toFixed(2)})`)
+      console.log(`[Click] Snapped to navmesh (${pt.x.toFixed(2)}, ${pt.y.toFixed(2)}, ${pt.z.toFixed(2)})`)
       console.log(
-        `[点击] 起点=(${agentGroup.position.x.toFixed(3)}, ${agentGroup.position.y.toFixed(3)}, ${agentGroup.position.z.toFixed(3)}) ` +
+        `[Click] start=(${agentGroup.position.x.toFixed(3)}, ${agentGroup.position.y.toFixed(3)}, ${agentGroup.position.z.toFixed(3)}) ` +
         `F${getFloorFromY(agentGroup.position.y)}  ` +
-        `原始点=(${rawPt.x.toFixed(3)}, ${rawPt.y.toFixed(3)}, ${rawPt.z.toFixed(3)})  ` +
-        `吸附点=(${pt.x.toFixed(3)}, ${pt.y.toFixed(3)}, ${pt.z.toFixed(3)}) F${getFloorFromY(pt.y)}`
+        `raw=(${rawPt.x.toFixed(3)}, ${rawPt.y.toFixed(3)}, ${rawPt.z.toFixed(3)})  ` +
+        `snapped=(${pt.x.toFixed(3)}, ${pt.y.toFixed(3)}, ${pt.z.toFixed(3)}) F${getFloorFromY(pt.y)}`
       )
     }
 
@@ -687,6 +751,6 @@ export function useScene() {
     // Methods
     init, startNavigation, showPreview,
     cancelNavigation, focusFloor,
-    setWheelchairMode, setRoutingStrategy, clickNavigate, destroy,
+    setWheelchairMode, setRoutingStrategy, setWaypointMarkers, clickNavigate, destroy,
   }
 }

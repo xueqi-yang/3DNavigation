@@ -53,7 +53,7 @@ export class PathfinderSystem {
 
     const fromFloor = getFloorFromY(from.y)
     const toFloor   = getFloorFromY(to.y)
-    console.log(`[寻路:${strategy}] F${fromFloor}(${from.x.toFixed(2)},${from.y.toFixed(2)},${from.z.toFixed(2)}) → F${toFloor}(${to.x.toFixed(2)},${to.y.toFixed(2)},${to.z.toFixed(2)})`)
+    console.log(`[Path:${strategy}] F${fromFloor}(${from.x.toFixed(2)},${from.y.toFixed(2)},${from.z.toFixed(2)}) -> F${toFloor}(${to.x.toFixed(2)},${to.y.toFixed(2)},${to.z.toFixed(2)})`)
 
     // ── Elevator vs stairs decision ──
     // Distance-only strategy:
@@ -76,17 +76,18 @@ export class PathfinderSystem {
 
         if (useElev) {
           if (legA && legB) {
-            console.log(`[电梯] 选电梯  legA=${legA.length}点 + 电梯段 + legB=${legB.length}点`)
+            console.log(`[Elevator] Selected elevator route: legA=${legA.length} pts + elevator ride + legB=${legB.length} pts`)
             return [
               ...legA,
-              { x: elevFrom.x, y: elevFrom.y, z: elevFrom.z, _elevatorRide: true, _toFloor: toFloor, _landX: elevNavTo.x, _landY: elevNavTo.y, _landZ: elevNavTo.z },
+              { x: elevFrom.x, y: elevFrom.y, z: elevFrom.z, _elevatorRide: true, _toFloor: toFloor, _landX: elevTo.x, _landY: elevTo.y, _landZ: elevTo.z },
+              { x: elevTo.x, y: elevTo.y, z: elevTo.z },
               ...legB,
             ]
           }
         }
 
         if (stairPath) {
-          console.log(`[楼梯] 选楼梯  ${stairPath.length}点`)
+          console.log(`[Stairs] Selected stair route: ${stairPath.length} pts`)
           return stairPath
         }
       }
@@ -94,7 +95,7 @@ export class PathfinderSystem {
 
     // ── Direct navmesh A* — stairs handled by navmesh geometry ──
     const path = this._navPath(from, to)
-    console.log(`[寻路结果] ${path ? path.length + '点' : '❌无路径'}`)
+    console.log(`[Path result] ${path ? path.length + ' pts' : 'no path'}`)
     return path
   }
 
@@ -111,11 +112,11 @@ export class PathfinderSystem {
   // ── Distance-only comparison: elevator walking distance vs stair path length ──
   _chooseElevatorByDistance(from, to, elevatorExit, elevatorLegA, elevatorLegB, stairPath, elevatorOpen) {
     if (!elevatorLegA || !elevatorLegB) {
-      console.log('[距离比较] 电梯路线无法计算，选择楼梯')
+      console.log('[Distance comparison] Elevator route unavailable, selecting stairs')
       return false
     }
     if (!stairPath) {
-      console.log('[距离比较] 楼梯路线无法计算，选择电梯')
+      console.log('[Distance comparison] Stair route unavailable, selecting elevator')
       return true
     }
 
@@ -124,22 +125,22 @@ export class PathfinderSystem {
     const elevatorDistance = elevatorInDistance + elevatorOutDistance
     const stairDistance = this._pathLength(from, stairPath)
 
-    let decision = '楼梯'
+    let decision = 'stairs'
     let useElevator = false
     if (stairDistance > elevatorDistance) {
       useElevator = true
-      decision = '电梯'
+      decision = 'elevator'
     } else if (stairDistance === elevatorDistance) {
       useElevator = elevatorOpen
-      decision = elevatorOpen ? '电梯(距离相等且门开)' : '楼梯(距离相等且门关)'
+      decision = elevatorOpen ? 'elevator (equal distance, door open)' : 'stairs (equal distance, door closed)'
     }
 
     console.log(
-      `[距离比较] d1电梯外步行=${elevatorDistance.toFixed(2)}m ` +
-      `(去电梯=${elevatorInDistance.toFixed(2)}m + 出电梯=${elevatorOutDistance.toFixed(2)}m)  ` +
-      `d2楼梯=${stairDistance.toFixed(2)}m  ` +
-      `差值(d1-d2)=${(elevatorDistance - stairDistance).toFixed(2)}m  ` +
-      `门=${elevatorOpen ? '开' : '关'}  → ${decision}`
+      `[Distance comparison] d1 elevator walking=${elevatorDistance.toFixed(2)}m ` +
+      `(to elevator=${elevatorInDistance.toFixed(2)}m + from elevator=${elevatorOutDistance.toFixed(2)}m)  ` +
+      `d2 stairs=${stairDistance.toFixed(2)}m  ` +
+      `diff(d1-d2)=${(elevatorDistance - stairDistance).toFixed(2)}m  ` +
+      `door=${elevatorOpen ? 'open' : 'closed'}  -> ${decision}`
     )
     return useElevator
   }
@@ -147,11 +148,11 @@ export class PathfinderSystem {
   // ── Time-estimate comparison: converts path lengths and vertical movement into seconds ──
   _chooseElevatorByTime(from, to, fromFloor, toFloor, cabFloor, elevatorExit, elevatorLegA, elevatorLegB, stairPath, elevatorOpen) {
     if (!elevatorLegA || !elevatorLegB) {
-      console.log('[时间比较] 电梯路线无法计算，选择楼梯')
+      console.log('[Time comparison] Elevator route unavailable, selecting stairs')
       return false
     }
     if (!stairPath) {
-      console.log('[时间比较] 楼梯路线无法计算，选择电梯')
+      console.log('[Time comparison] Stair route unavailable, selecting elevator')
       return true
     }
 
@@ -183,24 +184,24 @@ export class PathfinderSystem {
     const stairExtraTime = floorDiff * stairExtraPerFloor
     const stairTime = stairWalkTime + stairExtraTime
 
-    let decision = '楼梯'
+    let decision = 'stairs'
     let useElevator = false
     if (stairTime > elevatorTime) {
       useElevator = true
-      decision = '电梯'
+      decision = 'elevator'
     } else if (stairTime === elevatorTime) {
       useElevator = elevatorOpen
-      decision = elevatorOpen ? '电梯(时间相等且门开)' : '楼梯(时间相等且门关)'
+      decision = elevatorOpen ? 'elevator (equal time, door open)' : 'stairs (equal time, door closed)'
     }
 
     console.log(
-      `[时间比较] 电梯=${elevatorTime.toFixed(2)}s ` +
-      `(步行=${elevatorWalkTime.toFixed(2)}s, 等待=${elevatorWaitTime.toFixed(2)}s, ` +
-      `进门=${ELEVATOR_BOARD_TIME.toFixed(2)}s, 运行=${elevatorRideTime.toFixed(2)}s, 出门=${ELEVATOR_EXIT_TIME.toFixed(2)}s)  ` +
-      `楼梯=${stairTime.toFixed(2)}s ` +
-      `(路径=${stairWalkTime.toFixed(2)}s, 上下楼惩罚=${stairExtraTime.toFixed(2)}s)  ` +
-      `差值(电梯-楼梯)=${(elevatorTime - stairTime).toFixed(2)}s  ` +
-      `门=${elevatorOpen ? '开' : '关'}  → ${decision}`
+      `[Time comparison] elevator=${elevatorTime.toFixed(2)}s ` +
+      `(walk=${elevatorWalkTime.toFixed(2)}s, wait=${elevatorWaitTime.toFixed(2)}s, ` +
+      `board=${ELEVATOR_BOARD_TIME.toFixed(2)}s, ride=${elevatorRideTime.toFixed(2)}s, exit=${ELEVATOR_EXIT_TIME.toFixed(2)}s)  ` +
+      `stairs=${stairTime.toFixed(2)}s ` +
+      `(path=${stairWalkTime.toFixed(2)}s, vertical penalty=${stairExtraTime.toFixed(2)}s)  ` +
+      `diff(elevator-stairs)=${(elevatorTime - stairTime).toFixed(2)}s  ` +
+      `door=${elevatorOpen ? 'open' : 'closed'}  -> ${decision}`
     )
     return useElevator
   }
