@@ -1,56 +1,6 @@
 import * as THREE from 'three'
 
-// ─────────────────────────────────────────────
-//  All navigable destinations
-//  accessible: true = wheelchair friendly (elevator only)
-// ─────────────────────────────────────────────
-
-export const DESTINATIONS = [
-  // ── Floor 1 ──
-  { id: 'entrance_main', name: 'Main Entrance',    floor: 1, position: new THREE.Vector3(0, 0.3, -1),          accessible: true,  category: 'entrance'  },
-  { id: 'door1',         name: 'Side Door A',      floor: 1, position: new THREE.Vector3(-2.80, 0.3, -0.06),   accessible: true,  category: 'entrance'  },
-  { id: 'door3',         name: 'Side Door B',      floor: 1, position: new THREE.Vector3(2.88, 0.3, -2.53),    accessible: true,  category: 'entrance'  },
-  { id: 'reception',     name: 'Reception',         floor: 1, position: new THREE.Vector3(0, 0.3, -2),          accessible: true,  category: 'service'   },
-  { id: 'cafeteria',     name: 'Cafeteria',         floor: 1, position: new THREE.Vector3(0, 0.3, -6),          accessible: true,  category: 'service'   },
-  { id: 'amphi_a',       name: 'Amphitheatre A',    floor: 1, position: new THREE.Vector3(3, 0.3, -5),          accessible: true,  category: 'classroom' },
-  { id: 'amphi_b',       name: 'Amphitheatre B',    floor: 1, position: new THREE.Vector3(-3, 0.3, -5),         accessible: true,  category: 'classroom' },
-  { id: 'wc_f1',         name: 'Restrooms (F1)',    floor: 1, position: new THREE.Vector3(-1, 0.3, -3),         accessible: true,  category: 'facility'  },
-  { id: 'elevator_f1',   name: 'Elevator (F1)',     floor: 1, position: new THREE.Vector3(1.5, 0.3, -3),        accessible: true,  category: 'elevator'  },
-  { id: 'stairs_f1',     name: 'Staircase (F1)',    floor: 1, position: new THREE.Vector3(-1.5, 0.3, -4),       accessible: false, category: 'stairs'    },
-
-  // ── Floor 2 ──
-  { id: 'door2',         name: 'Door Floor 2',      floor: 2, position: new THREE.Vector3(2.90, 2.3, -6.43), accessible: false, category: 'entrance'  },
-  { id: 'lab_networks',  name: 'Networks Lab',      floor: 2, position: new THREE.Vector3(2, 2.3, -5),        accessible: true,  category: 'lab'       },
-  { id: 'lab_telecom',   name: 'Telecom Lab',       floor: 2, position: new THREE.Vector3(-2, 2.3, -5),       accessible: true,  category: 'lab'       },
-  { id: 'room_201',      name: 'Room 201',           floor: 2, position: new THREE.Vector3(3, 2.3, -3),        accessible: true,  category: 'classroom' },
-  { id: 'room_202',      name: 'Room 202',           floor: 2, position: new THREE.Vector3(3, 2.3, -5),        accessible: true,  category: 'classroom' },
-  { id: 'room_203',      name: 'Room 203',           floor: 2, position: new THREE.Vector3(-3, 2.3, -3),       accessible: true,  category: 'classroom' },
-  { id: 'wc_f2',         name: 'Restrooms (F2)',    floor: 2, position: new THREE.Vector3(-1, 2.3, -3),       accessible: true,  category: 'facility'  },
-  { id: 'elevator_f2',   name: 'Elevator (F2)',     floor: 2, position: new THREE.Vector3(1.5, 2.3, -3),      accessible: true,  category: 'elevator'  },
-  { id: 'stairs_f2',     name: 'Staircase (F2)',    floor: 2, position: new THREE.Vector3(-1.5, 2.3, -4),     accessible: false, category: 'stairs'    },
-
-  // ── Floor 3 ──
-  { id: 'office_dean',   name: "Dean's Office",     floor: 3, position: new THREE.Vector3(0, 4.3, -2),          accessible: true,  category: 'office'    },
-  { id: 'office_admin',  name: 'Administration',    floor: 3, position: new THREE.Vector3(2, 4.3, -2),          accessible: true,  category: 'office'    },
-  { id: 'room_301',      name: 'Room 301',           floor: 3, position: new THREE.Vector3(3, 4.3, -4),          accessible: true,  category: 'classroom' },
-  { id: 'room_302',      name: 'Room 302',           floor: 3, position: new THREE.Vector3(-3, 4.3, -4),         accessible: true,  category: 'classroom' },
-  { id: 'wc_f3',         name: 'Restrooms (F3)',    floor: 3, position: new THREE.Vector3(-1, 4.3, -3),         accessible: true,  category: 'facility'  },
-  { id: 'elevator_f3',   name: 'Elevator (F3)',     floor: 3, position: new THREE.Vector3(1.5, 4.3, -3),        accessible: true,  category: 'elevator'  },
-  { id: 'stairs_f3',     name: 'Staircase (F3)',    floor: 3, position: new THREE.Vector3(-1.5, 4.3, -4),       accessible: false, category: 'stairs'    },
-
-  // ── Floor 4 ──
-  { id: 'library',       name: 'Library',            floor: 4, position: new THREE.Vector3(0, 6.3, -5),        accessible: true,  category: 'service'   },
-  { id: 'study_room',    name: 'Study Room',         floor: 4, position: new THREE.Vector3(2, 6.3, -5),        accessible: true,  category: 'service'   },
-  { id: 'room_401',      name: 'Room 401',           floor: 4, position: new THREE.Vector3(-2, 6.3, -5),       accessible: true,  category: 'classroom' },
-  { id: 'elevator_f4',   name: 'Elevator (F4)',     floor: 4, position: new THREE.Vector3(1.5, 6.3, -3),      accessible: true,  category: 'elevator'  },
-  { id: 'stairs_f4',     name: 'Staircase (F4)',    floor: 4, position: new THREE.Vector3(-1.5, 6.3, -4),     accessible: false, category: 'stairs'    },
-
-  // ── Floor 5 ──
-  { id: 'server_room',   name: 'Server Room',        floor: 5, position: new THREE.Vector3(3, 8.3, -4),         accessible: true,  category: 'lab'       },
-  { id: 'conference',    name: 'Conference Room',    floor: 5, position: new THREE.Vector3(-2, 8.3, -4),        accessible: true,  category: 'office'    },
-  { id: 'elevator_f5',   name: 'Elevator (F5)',     floor: 5, position: new THREE.Vector3(1.5, 8.3, -3),       accessible: true,  category: 'elevator'  },
-  { id: 'stairs_f5',     name: 'Staircase (F5)',    floor: 5, position: new THREE.Vector3(-1.5, 8.3, -4),      accessible: false, category: 'stairs'    },
-]
+export const DESTINATIONS = []
 
 export const CATEGORY_ICONS = {
   entrance:  '↗',

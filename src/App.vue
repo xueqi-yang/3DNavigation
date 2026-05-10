@@ -71,6 +71,11 @@
             @click="setStrategy('time')"
           >Time</button>
         </div>
+        <div class="route-legend">
+          <span><i class="legend-dot selected" />Selected route</span>
+          <span><i class="legend-dot distance" />Distance route</span>
+          <span><i class="legend-dot time" />Time route</span>
+        </div>
 
         <!-- Waypoint list -->
         <div class="waypoint-list">
@@ -130,14 +135,6 @@
 
     <!-- Status bar -->
     <div class="status-bar">{{ statusMsg }}</div>
-
-    <!-- Path confirm bar -->
-    <Transition name="slide-up">
-      <div v-if="hasPreview && !isNavigating" class="confirm-bar">
-        <button class="btn btn-primary" @click="onConfirm">Start walking</button>
-        <button class="btn btn-secondary" @click="onCancelPreview">Cancel</button>
-      </div>
-    </Transition>
 
   </div>
 </template>
@@ -208,15 +205,6 @@ function onNavigate() {
   }
 }
 
-function onConfirm() {
-  startNavigation(waypoints.value)
-  waypoints.value = []
-}
-
-function onCancelPreview() {
-  cancelNavigation()
-}
-
 function onClear() {
   waypoints.value     = []
   searchResults.value = []
@@ -230,8 +218,14 @@ function onFocusFloor(f) {
 
 // ── Canvas click ──
 function onCanvasClick(e) {
-  if (waypoints.value.length > 0) return
-  clickNavigate(e, canvasRef.value)
+  const clicked = clickNavigate(e, canvasRef.value)
+  if (!clicked) {
+    waypoints.value = []
+    cancelNavigation()
+    return
+  }
+  waypoints.value = [clicked]
+  showPreview(waypoints.value)
 }
 
 // ── Lifecycle ──
@@ -365,6 +359,27 @@ body {
   border-color: rgba(99,179,237,0.4);
   color: rgba(99,179,237,0.9);
 }
+.route-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.45);
+}
+.route-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.legend-dot.selected { background: #ffffff; }
+.legend-dot.distance { background: #ffd700; }
+.legend-dot.time { background: #68d391; }
 
 /* ── Waypoints ── */
 .waypoint-list { display: flex; flex-direction: column; gap: 5px; min-height: 24px; }
@@ -457,19 +472,9 @@ body {
   pointer-events: none; white-space: nowrap; z-index: 10;
 }
 
-/* ── Confirm bar ── */
-.confirm-bar {
-  position: absolute; bottom: 70px; left: 50%;
-  transform: translateX(-50%);
-  display: flex; gap: 10px; z-index: 10;
-}
-
 /* ── Transitions ── */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
-
-.slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s; }
-.slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateX(-50%) translateY(10px); }
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; }

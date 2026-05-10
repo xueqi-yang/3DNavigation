@@ -2,6 +2,9 @@ import { ref, shallowRef } from 'vue'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { PathfinderSystem } from '../systems/pathfinder.js'
 import { ElevatorSystem } from '../systems/elevator.js'
 import { ELEVATOR_NAV_POSITIONS, ELEVATOR_POSITIONS, getFloorFromY, FLOOR_Y } from '../systems/destinations.js'
@@ -9,7 +12,13 @@ import { ELEVATOR_NAV_POSITIONS, ELEVATOR_POSITIONS, getFloorFromY, FLOOR_Y } fr
 const AGENT_SPEED  = 1.5
 const AGENT_HEIGHT = 0.5
 const AGENT_RADIUS = 0.12
+const AGENT_HEADING_OFFSET = -Math.PI / 2
 const ASSET_BASE = import.meta.env.BASE_URL
+const ROUTE_COLORS = {
+  selected: 0xffffff,
+  distance: 0xffd700,
+  time: 0x68d391,
+}
 
 export function useScene() {
   // ── Reactive state (exposed to Vue components) ──
@@ -32,7 +41,8 @@ export function useScene() {
   let elevator      = null
   let agentGroup    = null
   let pathLine      = null
-  let previewLine   = null
+  let distancePreviewLine = null
+  let timePreviewLine = null
   let floorMeshes   = {}
   let currentPath   = []
   let finalDest     = null
@@ -174,12 +184,29 @@ export function useScene() {
       new THREE.BufferGeometry(),
       new THREE.LineBasicMaterial({ color: 0x63b3ed, opacity: 0.7, transparent: true })
     )
-    previewLine = new THREE.Line(
-      new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({ color: 0xffd700, opacity: 0.5, transparent: true })
-    )
+    distancePreviewLine = _makePreviewLine(0xffd700)
+    timePreviewLine = _makePreviewLine(0x68d391)
     s.add(pathLine)
-    s.add(previewLine)
+    s.add(distancePreviewLine)
+    s.add(timePreviewLine)
+  }
+
+  function _makePreviewLine(color) {
+    const geometry = new LineGeometry()
+    geometry.setPositions([0, 0, 0, 0, 0, 0])
+    const material = new LineMaterial({
+      color,
+      linewidth: 5,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+    })
+    material.resolution.set(window.innerWidth, window.innerHeight)
+    const line = new Line2(geometry, material)
+    line.computeLineDistances()
+    line.renderOrder = 20
+    line.visible = false
+    return line
   }
 
   // ── Visual debug markers for configured elevator navigation points ──
@@ -360,7 +387,7 @@ export function useScene() {
       agentGroup.position.x += dx * scale
       agentGroup.position.y += dy * scale
       agentGroup.position.z += dz * scale
-      agentGroup.rotation.y  = Math.atan2(dx, dz)
+      agentGroup.rotation.y  = Math.atan2(dx, dz) + AGENT_HEADING_OFFSET
       // Update active floor as Y changes (e.g. on stairs)
       const f = getFloorFromY(agentGroup.position.y)
       if (f !== currentFloor.value) {
@@ -428,8 +455,14 @@ export function useScene() {
   }
 
   function clearPreviewLine() {
-    previewLine.geometry.dispose()
-    previewLine.geometry = new THREE.BufferGeometry()
+    distancePreviewLine.geometry.dispose()
+    distancePreviewLine.geometry = new LineGeometry()
+    distancePreviewLine.geometry.setPositions([0, 0, 0, 0, 0, 0])
+    distancePreviewLine.visible = false
+    timePreviewLine.geometry.dispose()
+    timePreviewLine.geometry = new LineGeometry()
+    timePreviewLine.geometry.setPositions([0, 0, 0, 0, 0, 0])
+    timePreviewLine.visible = false
     hasPreview.value = false
   }
 
@@ -449,6 +482,8 @@ export function useScene() {
     camera.value.aspect = w / h
     camera.value.updateProjectionMatrix()
     renderer.value.setSize(w, h, false)
+    distancePreviewLine?.material?.resolution.set(w, h)
+    timePreviewLine?.material?.resolution.set(w, h)
   }
 
   // ═══════════════════════════════════════════
@@ -462,21 +497,81 @@ export function useScene() {
 
   function showPreview(waypoints) {
     if (!pathfinder.ready || waypoints.length === 0) return
-    let from     = agentGroup.position.clone()
+    const start = agentGroup.position.clone()
+    console.log(
+      `[预览] 起点=(${start.x.toFixed(3)}, ${start.y.toFixed(3)}, ${start.z.toFixed(3)}) ` +
+      `F${getFloorFromY(start.y)}  终点数量=${waypoints.length}`
+    )
+    waypoints.forEach((wp, i) => {
+      console.log(
+        `[预览] 终点${i + 1} ${wp.name || wp.id || 'destination'}=` +
+        `(${wp.position.x.toFixed(3)}, ${wp.position.y.toFixed(3)}, ${wp.position.z.toFixed(3)}) ` +
+        `F${getFloorFromY(wp.position.y)}`
+      )
+    })
+
+    const distancePath = _previewPathForStrategy(waypoints, 'distance')
+    const timePath = _previewPathForStrategy(waypoints, 'time')
+
+    _updatePreviewLineColors()
+    _setPreviewLine(distancePreviewLine, distancePath, 0.08, start)
+    _setPreviewLine(timePreviewLine, timePath, 0.14, start)
+
+    hasPreview.value = Boolean(distancePath.length || timePath.length)
+    if (hasPreview.value) {
+      statusMsg.value = 'Choose Distance or Time, then start navigation'
+    }
+  }
+
+  function _previewPathForStrategy(waypoints, strategy) {
+    let from = agentGroup.position.clone()
     let fullPath = []
     const fromFloor = getFloorFromY(agentGroup.position.y)
     const elevOpen  = elevator ? elevator.isFloorOpen(fromFloor) : true
-    for (const wp of waypoints) {
-      const path = pathfinder.findPath(from, wp.position, elevOpen)
-      if (path) fullPath = fullPath.concat(path)
+    for (const [index, wp] of waypoints.entries()) {
+      console.log(
+        `[预览:${strategy}] 段${index + 1} from=(${from.x.toFixed(3)}, ${from.y.toFixed(3)}, ${from.z.toFixed(3)}) ` +
+        `F${getFloorFromY(from.y)} -> to=(${wp.position.x.toFixed(3)}, ${wp.position.y.toFixed(3)}, ${wp.position.z.toFixed(3)}) ` +
+        `F${getFloorFromY(wp.position.y)}`
+      )
+      const path = pathfinder.findPath(from, wp.position, elevOpen, strategy)
+      if (path) {
+        console.log(
+          `[预览:${strategy}] 段${index + 1} 路径点=${path.length} ` +
+          `首点=${_formatPoint(path[0])}  末点=${_formatPoint(path[path.length - 1])}`
+        )
+        fullPath = fullPath.concat(path)
+      } else {
+        console.warn(`[预览:${strategy}] 段${index + 1} 无路径`)
+      }
       from = wp.position
     }
-    if (fullPath.length > 0) {
-      const pts = fullPath.map(p => new THREE.Vector3(p.x, p.y + 0.1, p.z))
-      previewLine.geometry.dispose()
-      previewLine.geometry = new THREE.BufferGeometry().setFromPoints(pts)
-      hasPreview.value = true
+    console.log(`[预览:${strategy}] 总路径点=${fullPath.length}`)
+    return fullPath
+  }
+
+  function _setPreviewLine(line, path, yOffset, start = null) {
+    line.geometry.dispose()
+    if (!path.length) {
+      line.geometry = new LineGeometry()
+      line.geometry.setPositions([0, 0, 0, 0, 0, 0])
+      line.visible = false
+      return
     }
+    const points = [
+      ...(start ? [new THREE.Vector3(start.x, start.y + yOffset, start.z)] : []),
+      ...path.map(p => new THREE.Vector3(p.x, p.y + yOffset, p.z)),
+    ]
+    const positions = points.flatMap(p => [p.x, p.y, p.z])
+    line.geometry = new LineGeometry()
+    line.geometry.setPositions(positions)
+    line.computeLineDistances()
+    line.visible = true
+  }
+
+  function _formatPoint(point) {
+    if (!point) return 'null'
+    return `(${point.x.toFixed(3)}, ${point.y.toFixed(3)}, ${point.z.toFixed(3)})`
   }
 
   function cancelNavigation() {
@@ -503,6 +598,17 @@ export function useScene() {
 
   function setRoutingStrategy(strategy) {
     pathfinder.setRoutingStrategy(strategy)
+    _updatePreviewLineColors()
+  }
+
+  function _updatePreviewLineColors() {
+    if (!pathfinder) return
+    distancePreviewLine?.material?.color.setHex(
+      pathfinder.routingStrategy === 'distance' ? ROUTE_COLORS.selected : ROUTE_COLORS.distance
+    )
+    timePreviewLine?.material?.color.setHex(
+      pathfinder.routingStrategy === 'time' ? ROUTE_COLORS.selected : ROUTE_COLORS.time
+    )
   }
 
   function clickNavigate(event, canvas) {
@@ -524,13 +630,21 @@ export function useScene() {
       if (navHits.length > 0) {
         pt = navHits[0].point.clone()
         console.log(`[点击] navmesh命中 (${pt.x.toFixed(2)}, ${pt.y.toFixed(2)}, ${pt.z.toFixed(2)})`)
+        console.log(
+          `[点击] 起点=(${agentGroup.position.x.toFixed(3)}, ${agentGroup.position.y.toFixed(3)}, ${agentGroup.position.z.toFixed(3)}) ` +
+          `F${getFloorFromY(agentGroup.position.y)}  ` +
+          `点击点=(${pt.x.toFixed(3)}, ${pt.y.toFixed(3)}, ${pt.z.toFixed(3)}) F${getFloorFromY(pt.y)}`
+        )
       }
     }
 
     // ── Step 2: fallback — hit any building mesh, snap to nearest navmesh node ──
     if (!pt) {
       const allHits = ray.intersectObjects(scene.value.children, true)
-      if (allHits.length === 0) return
+      if (allHits.length === 0) {
+        console.warn('[点击] 没有命中任何场景物体')
+        return
+      }
       const rawPt   = allHits[0].point.clone()
       const snapped = pathfinder.snapToNavmesh(rawPt)
       if (!snapped) {
@@ -539,19 +653,22 @@ export function useScene() {
       }
       pt = new THREE.Vector3(snapped.x, snapped.y, snapped.z)
       console.log(`[点击] 吸附到navmesh (${pt.x.toFixed(2)}, ${pt.y.toFixed(2)}, ${pt.z.toFixed(2)})`)
+      console.log(
+        `[点击] 起点=(${agentGroup.position.x.toFixed(3)}, ${agentGroup.position.y.toFixed(3)}, ${agentGroup.position.z.toFixed(3)}) ` +
+        `F${getFloorFromY(agentGroup.position.y)}  ` +
+        `原始点=(${rawPt.x.toFixed(3)}, ${rawPt.y.toFixed(3)}, ${rawPt.z.toFixed(3)})  ` +
+        `吸附点=(${pt.x.toFixed(3)}, ${pt.y.toFixed(3)}, ${pt.z.toFixed(3)}) F${getFloorFromY(pt.y)}`
+      )
     }
 
-    const fromFloor = getFloorFromY(agentGroup.position.y)
-    const elevOpen  = elevator ? elevator.isFloorOpen(fromFloor) : true
-    const path = pathfinder.findPath(agentGroup.position.clone(), pt, elevOpen)
-    if (path) {
-      currentPath        = pathfinder.stringPull(path)
-      finalDest          = pt
-      waypointQueue      = [{ name: 'clicked point', position: pt }]
-      isNavigating.value = true
-      statusMsg.value    = 'Navigating to clicked point...'
-      _updateFloorOpacity(getFloorFromY(pt.y))
-      _updatePathLine()
+    statusMsg.value = 'Destination selected'
+    return {
+      id: `clicked_${Date.now()}`,
+      name: 'Clicked point',
+      floor: getFloorFromY(pt.y),
+      position: pt,
+      accessible: true,
+      category: 'custom',
     }
   }
 
