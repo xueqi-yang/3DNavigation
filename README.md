@@ -242,7 +242,7 @@ public/
     └── door.glb / door2.glb / door3.glb
 ```
 
-## Run Locally
+## Deploy
 
 Install dependencies:
 
