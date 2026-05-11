@@ -7,7 +7,7 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { PathfinderSystem } from '../systems/pathfinder.js'
 import { ElevatorSystem } from '../systems/elevator.js'
-import { ELEVATOR_NAV_POSITIONS, ELEVATOR_POSITIONS, getFloorFromY, FLOOR_Y } from '../systems/destinations.js'
+import { getFloorFromY, FLOOR_Y } from '../systems/destinations.js'
 
 const AGENT_SPEED  = 1.5
 const AGENT_HEIGHT = 0.5
@@ -114,7 +114,6 @@ export function useScene() {
 
     // Elevator system
     elevator = new ElevatorSystem(_scene)
-    _buildElevatorPositionMarkers(_scene)
     elevatorOpen.value = true  // F1 door opens on init (cab starts at F1)
     cabFloor.value = 1
     pathfinder.setCabFloorGetter(() => elevator._cabFloor)
@@ -208,40 +207,6 @@ export function useScene() {
     line.renderOrder = 20
     line.visible = false
     return line
-  }
-
-  // ── Visual debug markers for configured elevator navigation points ──
-  function _buildElevatorPositionMarkers(s) {
-    const elevatorMat = new THREE.MeshPhongMaterial({
-      color: 0xff4d4d,
-      emissive: 0xff1f1f,
-      emissiveIntensity: 0.45,
-    })
-    const navMat = new THREE.MeshPhongMaterial({
-      color: 0x4dff88,
-      emissive: 0x20c060,
-      emissiveIntensity: 0.45,
-    })
-
-    for (const [floorStr, pos] of Object.entries(ELEVATOR_POSITIONS)) {
-      const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(0.13, 16, 16),
-        elevatorMat.clone()
-      )
-      marker.position.set(pos.x, pos.y + 0.16, pos.z)
-      marker.name = `ElevatorPositionMarker_F${floorStr}`
-      s.add(marker)
-    }
-
-    for (const [floorStr, pos] of Object.entries(ELEVATOR_NAV_POSITIONS)) {
-      const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(0.09, 16, 16),
-        navMat.clone()
-      )
-      marker.position.set(pos.x, pos.y + 0.3, pos.z)
-      marker.name = `ElevatorNavPositionMarker_F${floorStr}`
-      s.add(marker)
-    }
   }
 
   function _makeWaypointMarker(order, waypoint) {
