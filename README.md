@@ -10,14 +10,8 @@ On top of that foundation, this project rebuilds the application structure with 
 
 ## Development Environment
 Node.js v20.20.2
-
-| Tool / Library | Usage |
-|---|---|
-| Vue 3 | UI structure and reactive state management |
-| Three.js | 3D scene rendering, camera, lights, models, and animation |
-| three-pathfinding | Navmesh-based A* route calculation |
-| Vite | Development server and production build |
-| GitHub Pages | Online deployment |
+Vue 3
+Three.js
 
 ## Features
 
