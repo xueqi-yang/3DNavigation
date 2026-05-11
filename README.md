@@ -1,4 +1,4 @@
-# 3D Indoor Navigation with Elevator Routing
+# 3D Map and Navigation Interface for Telecom Paris
 
 A web-based 3D indoor navigation prototype for Telecom Paris building. The project provides interactive route preview, elevator-versus-stairs routing, distance-based and time-based route recommendation, and multi-destination navigation.
 
